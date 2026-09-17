@@ -1,0 +1,906 @@
+{
+  "info": {
+    "_postman_id": "7f3b1c2a-9e4d-4a2b-8b1a-payplus000001",
+    "name": "PayPlus Wallet API",
+    "description": "REST API for the PayPlus wallet transaction service (merchants, wallets, charge/refund transactions, ledger). Requests are designed to run top to bottom, folder by folder (Health -> Merchants -> Wallets -> Transactions -> Ledger -> Idempotency), e.g. via Collection Runner, since later requests reuse ids saved by earlier ones. Several Transactions requests include a pre-request script that re-asserts the merchant/wallet active status they need, so the folder is self-healing even if run more than once.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "merchantId", "value": "", "type": "string" },
+    { "key": "walletId", "value": "", "type": "string" },
+    { "key": "transactionId", "value": "", "type": "string" },
+    { "key": "refundTransactionId", "value": "", "type": "string" },
+    { "key": "insufficientFundsWalletId", "value": "", "type": "string" },
+    { "key": "chargeClientRequestId", "value": "", "type": "string" },
+    { "key": "refundClientRequestId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('status field is ok', function () { pm.expect(json.status).to.eql('ok'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Merchants",
+      "item": [
+        {
+          "name": "Create Merchant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/merchants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "merchants"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Store\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('response has numeric id', function () { pm.expect(typeof json.id).to.eql('number'); });",
+                  "pm.test('name matches request', function () { pm.expect(json.name).to.eql('Acme Store'); });",
+                  "pm.test('status defaults to active', function () { pm.expect(json.status).to.eql('active'); });",
+                  "pm.collectionVariables.set('merchantId', json.id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Merchant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/merchants/{{merchantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "merchants", "{{merchantId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('id matches merchantId variable', function () { pm.expect(json.id).to.eql(Number(pm.collectionVariables.get('merchantId'))); });",
+                  "pm.test('response has expected fields', function () {",
+                  "  pm.expect(json).to.have.property('name');",
+                  "  pm.expect(json).to.have.property('status');",
+                  "  pm.expect(json).to.have.property('created_at');",
+                  "  pm.expect(json).to.have.property('updated_at');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List Merchants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/merchants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "merchants"],
+              "query": [
+                { "key": "status", "value": "active", "disabled": true },
+                { "key": "limit", "value": "20", "disabled": true },
+                { "key": "offset", "value": "0", "disabled": true }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('response has items array and pagination fields', function () {",
+                  "  pm.expect(json.items).to.be.an('array');",
+                  "  pm.expect(json).to.have.property('total');",
+                  "  pm.expect(json).to.have.property('limit');",
+                  "  pm.expect(json).to.have.property('offset');",
+                  "});",
+                  "pm.test('created merchant appears in the list', function () {",
+                  "  const ids = json.items.map(function (m) { return m.id; });",
+                  "  pm.expect(ids).to.include(Number(pm.collectionVariables.get('merchantId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update Merchant Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/merchants/{{merchantId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "merchants", "{{merchantId}}", "status"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('status updated to inactive', function () { pm.expect(json.status).to.eql('inactive'); });",
+                  "// Note: this intentionally leaves merchantId inactive. The Transactions folder",
+                  "// re-activates it in pre-request scripts wherever an active merchant is needed."
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Wallets",
+      "item": [
+        {
+          "name": "Create Wallet",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner_identity\": \"emp-001\",\n  \"currency\": \"ILS\",\n  \"initial_balance\": \"500.00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('response has numeric id', function () { pm.expect(typeof json.id).to.eql('number'); });",
+                  "pm.test('balance matches initial_balance', function () { pm.expect(json.balance).to.eql('500.0000'); });",
+                  "pm.test('available_balance equals balance', function () { pm.expect(json.available_balance).to.eql(json.balance); });",
+                  "pm.test('status defaults to active', function () { pm.expect(json.status).to.eql('active'); });",
+                  "pm.collectionVariables.set('walletId', json.id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Wallet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets/{{walletId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets", "{{walletId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('id matches walletId variable', function () { pm.expect(json.id).to.eql(Number(pm.collectionVariables.get('walletId'))); });",
+                  "pm.test('response includes available_balance', function () { pm.expect(json).to.have.property('available_balance'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List Wallets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets"],
+              "query": [
+                { "key": "status", "value": "active", "disabled": true },
+                { "key": "currency", "value": "ILS", "disabled": true },
+                { "key": "limit", "value": "20", "disabled": true },
+                { "key": "offset", "value": "0", "disabled": true }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('response has items array and pagination fields', function () {",
+                  "  pm.expect(json.items).to.be.an('array');",
+                  "  pm.expect(json).to.have.property('total');",
+                  "  pm.expect(json).to.have.property('limit');",
+                  "  pm.expect(json).to.have.property('offset');",
+                  "});",
+                  "pm.test('created wallet appears in the list', function () {",
+                  "  const ids = json.items.map(function (w) { return w.id; });",
+                  "  pm.expect(ids).to.include(Number(pm.collectionVariables.get('walletId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update Wallet Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets/{{walletId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets", "{{walletId}}", "status"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('status updated to inactive', function () { pm.expect(json.status).to.eql('inactive'); });",
+                  "// Note: this intentionally leaves walletId inactive. The Transactions folder",
+                  "// re-activates it in pre-request scripts wherever an active wallet is needed."
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "item": [
+        {
+          "name": "Charge - Success",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/charge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "charge"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": {{walletId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"30.00\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{chargeClientRequestId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function setStatus(basePath, id, status, cb) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + basePath + id + '/status',",
+                  "    method: 'PATCH',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ status: status }) }",
+                  "  }, cb);",
+                  "}",
+                  "// This is the first Transactions request: make sure the merchant/wallet",
+                  "// created earlier are active, regardless of what earlier folders left them as.",
+                  "setStatus('/api/merchants/', pm.collectionVariables.get('merchantId'), 'active', function () {",
+                  "  setStatus('/api/wallets/', pm.collectionVariables.get('walletId'), 'active', function () {",
+                  "    pm.collectionVariables.set('chargeClientRequestId', 'charge-success-' + Date.now() + '-' + Math.random().toString(36).slice(2));",
+                  "  });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('response has numeric id', function () { pm.expect(typeof json.id).to.eql('number'); });",
+                  "pm.test('transaction status is succeeded', function () { pm.expect(json.status).to.eql('succeeded'); });",
+                  "pm.test('transaction type is charge', function () { pm.expect(json.type).to.eql('charge'); });",
+                  "pm.test('wallet_id matches request', function () { pm.expect(json.wallet_id).to.eql(Number(pm.collectionVariables.get('walletId'))); });",
+                  "if (json.id) { pm.collectionVariables.set('transactionId', json.id); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Charge - Insufficient Funds",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/charge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "charge"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": {{insufficientFundsWalletId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"120.50\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{$randomUUID}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function setStatus(basePath, id, status, cb) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + basePath + id + '/status',",
+                  "    method: 'PATCH',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ status: status }) }",
+                  "  }, cb);",
+                  "}",
+                  "setStatus('/api/merchants/', pm.collectionVariables.get('merchantId'), 'active', function () {",
+                  "  // Dedicated low-balance wallet for this decline scenario, created fresh each run",
+                  "  // (the Wallets folder only demonstrates creating the main walletId).",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + '/api/wallets',",
+                  "    method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ owner_identity: 'emp-low-balance', currency: 'ILS', initial_balance: '50.00' }) }",
+                  "  }, function (err, res) {",
+                  "    const walletJson = res.json();",
+                  "    pm.collectionVariables.set('insufficientFundsWalletId', walletJson.id);",
+                  "  });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 409', function () { pm.response.to.have.status(409); });",
+                  "const json = pm.response.json();",
+                  "pm.test('error code is insufficient_funds', function () { pm.expect(json.error.code).to.eql('insufficient_funds'); });",
+                  "pm.test('error envelope has status/message/details', function () {",
+                  "  pm.expect(json.error.status).to.eql(409);",
+                  "  pm.expect(typeof json.error.message).to.eql('string');",
+                  "  pm.expect(json.error.details).to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Charge - Inactive Wallet",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/charge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "charge"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": {{walletId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"10.00\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{$randomUUID}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function setStatus(basePath, id, status, cb) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + basePath + id + '/status',",
+                  "    method: 'PATCH',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ status: status }) }",
+                  "  }, cb);",
+                  "}",
+                  "// merchant must be active so this decline is unambiguously about the wallet",
+                  "// (merchant_inactive is checked before wallet_inactive in the service logic).",
+                  "setStatus('/api/merchants/', pm.collectionVariables.get('merchantId'), 'active', function () {",
+                  "  setStatus('/api/wallets/', pm.collectionVariables.get('walletId'), 'inactive', function () {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 409', function () { pm.response.to.have.status(409); });",
+                  "const json = pm.response.json();",
+                  "pm.test('error code is wallet_inactive', function () { pm.expect(json.error.code).to.eql('wallet_inactive'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Charge - Inactive Merchant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/charge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "charge"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": {{walletId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"10.00\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{$randomUUID}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function setStatus(basePath, id, status, cb) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + basePath + id + '/status',",
+                  "    method: 'PATCH',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ status: status }) }",
+                  "  }, cb);",
+                  "}",
+                  "// undo the previous request's wallet deactivation, then deactivate the merchant instead.",
+                  "setStatus('/api/wallets/', pm.collectionVariables.get('walletId'), 'active', function () {",
+                  "  setStatus('/api/merchants/', pm.collectionVariables.get('merchantId'), 'inactive', function () {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 409', function () { pm.response.to.have.status(409); });",
+                  "const json = pm.response.json();",
+                  "pm.test('error code is merchant_inactive', function () { pm.expect(json.error.code).to.eql('merchant_inactive'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Charge - Currency Mismatch",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/charge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "charge"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": {{walletId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"10.00\",\n  \"currency\": \"USD\",\n  \"client_request_id\": \"{{$randomUUID}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function setStatus(basePath, id, status, cb) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + basePath + id + '/status',",
+                  "    method: 'PATCH',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ status: status }) }",
+                  "  }, cb);",
+                  "}",
+                  "// undo the previous request's merchant deactivation; walletId (ILS) stays active",
+                  "// so this decline is unambiguously about the currency (\"USD\" in the body).",
+                  "setStatus('/api/merchants/', pm.collectionVariables.get('merchantId'), 'active', function () {",
+                  "  setStatus('/api/wallets/', pm.collectionVariables.get('walletId'), 'active', function () {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 409', function () { pm.response.to.have.status(409); });",
+                  "const json = pm.response.json();",
+                  "pm.test('error code is currency_mismatch', function () { pm.expect(json.error.code).to.eql('currency_mismatch'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Refund - Success",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/refund",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "refund"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"original_transaction_id\": {{transactionId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"10.00\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{refundClientRequestId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function setStatus(basePath, id, status, cb) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + basePath + id + '/status',",
+                  "    method: 'PATCH',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ status: status }) }",
+                  "  }, cb);",
+                  "}",
+                  "setStatus('/api/merchants/', pm.collectionVariables.get('merchantId'), 'active', function () {",
+                  "  setStatus('/api/wallets/', pm.collectionVariables.get('walletId'), 'active', function () {",
+                  "    pm.collectionVariables.set('refundClientRequestId', 'refund-success-' + Date.now() + '-' + Math.random().toString(36).slice(2));",
+                  "  });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('refund status is succeeded', function () { pm.expect(json.status).to.eql('succeeded'); });",
+                  "pm.test('refund type is refund', function () { pm.expect(json.type).to.eql('refund'); });",
+                  "pm.test('original_transaction_id matches the charge', function () { pm.expect(json.original_transaction_id).to.eql(Number(pm.collectionVariables.get('transactionId'))); });",
+                  "if (json.id) { pm.collectionVariables.set('refundTransactionId', json.id); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Refund - Invalid Original Transaction",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/refund",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "refund"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"original_transaction_id\": 999999999,\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"5.00\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{$randomUUID}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 404', function () { pm.response.to.have.status(404); });",
+                  "const json = pm.response.json();",
+                  "pm.test('error code is transaction_not_found', function () { pm.expect(json.error.code).to.eql('transaction_not_found'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Refund - Over Refund",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/refund",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "refund"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"original_transaction_id\": {{transactionId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"25.00\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{$randomUUID}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function setStatus(basePath, id, status, cb) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + basePath + id + '/status',",
+                  "    method: 'PATCH',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ status: status }) }",
+                  "  }, cb);",
+                  "}",
+                  "// Charge - Success charged 30.00 and Refund - Success already refunded 10.00,",
+                  "// leaving 20.00 refundable; this request asks for 25.00 to trigger the decline.",
+                  "setStatus('/api/merchants/', pm.collectionVariables.get('merchantId'), 'active', function () {",
+                  "  setStatus('/api/wallets/', pm.collectionVariables.get('walletId'), 'active', function () {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 409', function () { pm.response.to.have.status(409); });",
+                  "const json = pm.response.json();",
+                  "pm.test('error code is refund_amount_exceeds_available', function () { pm.expect(json.error.code).to.eql('refund_amount_exceeds_available'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ledger",
+      "item": [
+        {
+          "name": "Get Wallet Ledger",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets/{{walletId}}/ledger-entries",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets", "{{walletId}}", "ledger-entries"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('response has items array and pagination fields', function () {",
+                  "  pm.expect(json.items).to.be.an('array');",
+                  "  pm.expect(json).to.have.property('total');",
+                  "  pm.expect(json).to.have.property('limit');",
+                  "  pm.expect(json).to.have.property('offset');",
+                  "});",
+                  "pm.test('each entry has the expected shape', function () {",
+                  "  json.items.forEach(function (entry) {",
+                  "    pm.expect(typeof entry.id).to.eql('number');",
+                  "    pm.expect(entry.wallet_id).to.eql(Number(pm.collectionVariables.get('walletId')));",
+                  "    pm.expect(['charge', 'refund']).to.include(entry.type);",
+                  "  });",
+                  "});",
+                  "pm.test('exactly one charge entry and one refund entry for this wallet', function () {",
+                  "  const types = json.items.map(function (item) { return item.type; });",
+                  "  pm.expect(types.filter(function (t) { return t === 'charge'; }).length).to.eql(1);",
+                  "  pm.expect(types.filter(function (t) { return t === 'refund'; }).length).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Transaction Ledger",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/{{transactionId}}/ledger-entries",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "{{transactionId}}", "ledger-entries"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('exactly one ledger entry for this transaction (charge is never duplicated)', function () { pm.expect(json.items.length).to.eql(1); });",
+                  "pm.test('entry type is charge', function () { pm.expect(json.items[0].type).to.eql('charge'); });",
+                  "pm.test('entry transaction_id matches', function () { pm.expect(json.items[0].transaction_id).to.eql(Number(pm.collectionVariables.get('transactionId'))); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Idempotency",
+      "item": [
+        {
+          "name": "Charge - Retry With Same client_request_id",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/charge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "charge"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": {{walletId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"30.00\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{chargeClientRequestId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Same client_request_id as Charge - Success: this must replay the original",
+                  "// transaction, not create a second one.",
+                  "pm.test('status code is 200 (idempotent replay, not 201 created)', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('returns the same transaction id as the original charge', function () { pm.expect(json.id).to.eql(Number(pm.collectionVariables.get('transactionId'))); });",
+                  "pm.test('transaction status is still succeeded', function () { pm.expect(json.status).to.eql('succeeded'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Refund - Retry With Same client_request_id",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/refund",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "refund"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"original_transaction_id\": {{transactionId}},\n  \"merchant_id\": {{merchantId}},\n  \"amount\": \"10.00\",\n  \"currency\": \"ILS\",\n  \"client_request_id\": \"{{refundClientRequestId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Same client_request_id as Refund - Success: this must replay the original",
+                  "// refund, not create a second one.",
+                  "pm.test('status code is 200 (idempotent replay, not 201 created)', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('returns the same transaction id as the original refund', function () { pm.expect(json.id).to.eql(Number(pm.collectionVariables.get('refundTransactionId'))); });",
+                  "pm.test('transaction status is still succeeded', function () { pm.expect(json.status).to.eql('succeeded'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}
