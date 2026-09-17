@@ -69,6 +69,8 @@ export const pageQuerySchema = z.object({
   offset: offsetQuerySchema,
 });
 
+export type PageQuery = z.infer<typeof pageQuerySchema>;
+
 
 export function amountSchema(field = "amount") {
   return z
